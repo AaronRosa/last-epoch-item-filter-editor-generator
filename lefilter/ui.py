@@ -39,9 +39,18 @@ from .starter import (PARTS, TEMPLATE_PARTS, add_missing_sections, class_hide_sp
                       write_generated_template, write_template)
 from .matcher import Context, evaluate
 from .rules import ConfigError, build_slot_filters, class_hide_name, read_config, unique_kind
+from .paths import QUICK_AFFIXES_FILE
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
 FILE_RE = re.compile(r"^[^/\\:*?\"<>|]+\.xml$", re.I)
+
+
+def _read_quick_affixes() -> list[int]:
+    """Read the saved quick-add affix id list, or [] if not yet created."""
+    try:
+        return json.loads(QUICK_AFFIXES_FILE.read_text(encoding="utf-8")).get("ids", [])
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return []
 
 
 class Api:
@@ -195,6 +204,7 @@ class Api:
             "app_version": __version__,
             "max_rules": MAX_RULES,
             "locations": list(self.dirs),
+            "quick_affixes": _read_quick_affixes(),
         }
 
     # --- generators / preview --------------------------------------------------------
@@ -316,6 +326,12 @@ class Api:
     def match(self, body: dict) -> dict:
         return evaluate(body["rules"], body["item"], int(body.get("level", 1)), self.ctx)
 
+    def quick_affixes_save(self, body: dict) -> dict:
+        """Save the quick-add affix id list to quick_affixes.json."""
+        ids = [int(i) for i in body.get("ids", []) if isinstance(i, (int, float))]
+        QUICK_AFFIXES_FILE.write_text(json.dumps({"ids": ids}, ensure_ascii=False), encoding="utf-8")
+        return {"ids": ids}
+
 
 def _handler(api: Api):
     class Handler(BaseHTTPRequestHandler):
@@ -414,7 +430,8 @@ def _handler(api: Api):
                       "/api/refresh": api.refresh, "/api/cleanup": api.cleanup, "/api/filter/delete": api.delete,
                       "/api/new": api.new, "/api/complete": api.complete, "/api/bis": api.bis,
                       "/api/bis/read": api.bis_read, "/api/reorder": api.reorder, "/api/restore": api.restore,
-                      "/api/template/rebuild": api.rebuild_template}
+                      "/api/template/rebuild": api.rebuild_template,
+                      "/api/quick-affixes": api.quick_affixes_save}
             fn = routes.get(urlparse(self.path).path)
             if not fn:
                 return self._json({"error": "not found"}, 404)

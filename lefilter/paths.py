@@ -39,6 +39,7 @@ TEMPLATE_FILE = USER_DIR / "templates" / "New filter.xml"
 CONFIG_FILE = USER_DIR / "config.toml"
 GAME_DIR_FILE = USER_DIR / "game_dir.txt"          # the game folder the user pointed us to, if any
 SCHEMA_DIR = USER_DIR / "schema"                   # optional hand-made schemas (none are shipped)
+QUICK_AFFIXES_FILE = USER_DIR / "quick_affixes.json"   # user's quick-add affix list (ids)
 
 
 def prepare_user_dir() -> None:

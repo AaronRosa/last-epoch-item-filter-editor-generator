@@ -59,6 +59,12 @@ let M = null;
 const SHOW_ALL_AFFIXES = new WeakSet();
 let META_EN = null;   // the English game data; a language overlays a copy of it   // affix conditions whose picker lists every affix
 
+async function saveQuickAffixes(ids) {
+  S.meta.quick_affixes = ids;
+  renderEditor();
+  await api("/api/quick-affixes", { ids });
+}
+
 async function api(path, body) {
   const init = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
   const res = await fetch(path, init);
@@ -284,6 +290,15 @@ const affixMaxTier = (id) => Math.max(0, ...(M.affix.get(id)?.lines || []).map((
 /** An affix's group in the in-game picker: "Offensive · Damage Type". */
 const affixGroup = (a) => (a ? `${catName(a.header)} · ${catName(a.category)}` : tx("Not in this game version"));
 
+const AFFIX_RARITY_ORDER = ["Rare", "Uncommon", "Common"];
+function affixRarityGroup(a) {
+  if (!a) return "Common";
+  const w = a.weight ?? 1;
+  if (w <= 0.2) return "Rare";
+  if (w <= 0.6) return "Uncommon";
+  return "Common";
+}
+
 /** Affixes (or ids) the in-game picker's way: its headers and categories in the game's order (data from
  *  before that order was extracted: by their names), a category's affixes by name; unknown ids last. */
 function compareAffixes(x, y) {
@@ -295,7 +310,7 @@ function compareAffixes(x, y) {
 }
 
 /** An affix list's quick filter: { cats: picker groups shown (none = all), sort: "category" | "name" }. */
-const newAffixFilter = () => ({ cats: new Set(), sort: "category" });
+const newAffixFilter = () => ({ cats: new Set(), sort: "category", quick: false });
 const AFFIX_PICKER = new WeakMap();   // per affix condition
 
 /** Quick filter bar for an affix list: the in-game picker's categories as chips under their headers, with how
@@ -316,8 +331,9 @@ function affixFilterBar(f, affixes, redraw, all = affixes) {
     const change = (fn) => () => { fn(); draw(); redraw(); };
     fill(box,
       h("div", { class: "row" }, h("span", { class: "hint" }, tx("Sort")),
-        h("div", { class: "seg" }, [["category", tk("by category")], ["name", tk("by name")]].map(([k, label]) =>
+        h("div", { class: "seg" }, [["category", tk("by category")], ["name", tk("by name")], ["rarity", tk("by rarity")]].map(([k, label]) =>
           h("button", { class: f.sort === k ? "on" : "", onclick: change(() => { f.sort = k; }) }, tx(label)))),
+        S.meta.quick_affixes?.length ? h("button", { class: f.quick ? "on" : "", onclick: change(() => { f.quick = !f.quick; }) }, tx("Quick affixes")) : null,
         f.cats.size ? h("button", { onclick: change(() => f.cats.clear()) }, tx("All categories")) : null),
       [...heads].map(([head, cats]) => h("div", { class: "chips compact" }, h("span", { class: "hint cat" }, head), h("span", { class: "chip-row" },
         cats.map(([key, name]) => chipToggle(name, f.cats.has(key),
@@ -326,7 +342,10 @@ function affixFilterBar(f, affixes, redraw, all = affixes) {
   draw();
   return box;
 }
-const affixShownBy = (f) => (a) => !f.cats.size || f.cats.has(affixGroup(a));
+const affixShownBy = (f) => {
+  const quick = f.quick && S.meta.quick_affixes?.length ? new Set(S.meta.quick_affixes) : null;
+  return (a) => (!f.cats.size || f.cats.has(affixGroup(a))) && (!quick || quick.has(a.id));
+};
 
 /** Picked affixes as chips under subheaders: each picker group's line, then its chips, then the next group. */
 function groupedChips(ids, chip) {
@@ -1881,7 +1900,7 @@ function affixValueCell(affix, { tiers = null, typeIds = null, omen = false } = 
 
 /** Searchable add-list. items: [{id, label, meta, group, alt?, cell?}], selected: Set of ids, onAdd(ids). */
 
-function searchPicker(items, isSelected, onAdd, placeholder, { query = "", onQuery = null } = {}) {
+function searchPicker(items, isSelected, onAdd, placeholder, { query = "", onQuery = null, groupBtn = null, itemBtn = null, onFavAll = null } = {}) {
   const results = h("div", { class: "picker" });
   const input = h("input", { type: "search", placeholder, style: { flex: 1 }, value: query });
   let shown = [];
@@ -1889,11 +1908,21 @@ function searchPicker(items, isSelected, onAdd, placeholder, { query = "", onQue
     const q = input.value.trim().toLowerCase();
     shown = items.filter((it) => !isSelected(it.id) && (!q || [it.label, it.alt, it.group].some((s) => (s || "").toLowerCase().includes(q))));
     results.replaceChildren();
+    const groupIds = groupBtn ? new Map() : null;
+    if (groupIds) for (const it of shown.slice(0, 400)) {
+      if (it.group) { if (!groupIds.has(it.group)) groupIds.set(it.group, []); groupIds.get(it.group).push(it.id); }
+    }
     let group = null;
     for (const it of shown.slice(0, 400)) {
-      if (it.group !== group) { group = it.group; if (group) put(results, h("div", { class: "grp" }, group)); }
+      if (it.group !== group) {
+        group = it.group;
+        if (group) {
+          const btn = groupBtn?.(group, groupIds.get(group) || []);
+          put(results, h("div", { class: "grp" }, group, btn ?? null));
+        }
+      }
       const opt = h("div", { class: "opt" + (it.cell ? " with-value" : ""), onclick: () => { hideTip(); onAdd([it.id]); } },
-        h("span", {}, it.label, it.pill ? it.pill() : null), h("span", { class: "meta" }, it.meta || ""), it.cell ? it.cell() : null);
+        itemBtn ? itemBtn(it) : null, h("span", {}, it.label, it.pill ? it.pill() : null), h("span", { class: "meta" }, it.meta || ""), it.cell ? it.cell() : null);
       put(results, it.tip ? withTip(opt, it.tip) : opt);
     }
     if (shown.length > 400) put(results, h("div", { class: "opt hint" }, tx("…{n} more, refine the search", { n: shown.length - 400 })));
@@ -1902,7 +1931,8 @@ function searchPicker(items, isSelected, onAdd, placeholder, { query = "", onQue
   input.addEventListener("input", () => { onQuery?.(input.value); draw(); });
   draw();
   return h("div", {}, h("div", { class: "row" }, input,
-    h("button", { title: tx("Add every entry listed below"), onclick: () => onAdd(shown.map((s) => s.id)) }, tx("Add all listed"))), results);
+    h("button", { title: tx("Add every entry listed below"), onclick: () => onAdd(shown.map((s) => s.id)) }, tx("Add all listed")),
+    onFavAll ? h("button", { title: tx("Add every entry listed below to Quick affixes"), onclick: () => onFavAll(shown.map((s) => s.id)) }, tx("Favorite all listed")) : null), results);
 }
 
 /** Copy / paste buttons for an affix list. The copied list is kept (in this browser) until something
@@ -1933,12 +1963,32 @@ function affixEditor(rule, c) {
   AFFIX_PICKER.set(c, f);
   const pickerBox = h("div", {});
   const drawPicker = () => {
+    const quickSet = new Set(S.meta.quick_affixes || []);
     const items = listed.filter(affixShownBy(f)).map((a) => ({ id: a.id, label: a.name, alt: `${a.en_name || ""} ${a.internal_name || ""}`,
-      group: f.sort === "name" ? "" : affixGroup(a), meta: a.idol ? tx("idol") : "", pill: () => affixPill(a),
+      group: f.sort === "name" ? "" : f.sort === "rarity" ? affixRarityGroup(a) : affixGroup(a), meta: a.idol ? tx("idol") : "", pill: () => affixPill(a),
       cell: () => affixValueCell(a, { tiers: tiersOf(a), typeIds, omen: omenOf(a) }) }));
     if (f.sort === "name") items.sort((x, y) => x.label.localeCompare(y.label));
-    fill(pickerBox, searchPicker(items, (id) => sel.has(id), (ids) => mutate(() => { c.affixes = [...c.affixes, ...ids.filter((i) => !sel.has(i))]; }, re),
-      f.cats.size ? tx("Search the ticked categories…") : tx("Search affixes to add…"), { query: f.q, onQuery: (q) => { f.q = q; } }));
+    else if (f.sort === "rarity") items.sort((x, y) => {
+      const ra = AFFIX_RARITY_ORDER.indexOf(affixRarityGroup(M.affix.get(x.id)));
+      const rb = AFFIX_RARITY_ORDER.indexOf(affixRarityGroup(M.affix.get(y.id)));
+      return ra - rb || x.label.localeCompare(y.label);
+    });
+    const onAdd = (ids) => mutate(() => { c.affixes = [...c.affixes, ...ids.filter((i) => !sel.has(i))]; }, re);
+    fill(pickerBox, searchPicker(items, (id) => sel.has(id), onAdd,
+      f.cats.size ? tx("Search the ticked categories…") : tx("Search affixes to add…"), {
+        query: f.q, onQuery: (q) => { f.q = q; },
+        groupBtn: f.sort === "rarity" ? (label, ids) => h("button", { onclick: () => onAdd(ids) }, tx("Add all")) : null,
+        onFavAll: (ids) => saveQuickAffixes([...new Set([...(S.meta.quick_affixes || []), ...ids])]),
+        itemBtn: (it) => {
+          const inQuick = quickSet.has(it.id);
+          const btn = h("button", { class: "quick-star" + (inQuick ? " on" : ""),
+            title: inQuick ? tx("Remove from Quick affixes") : tx("Add to Quick affixes") }, "★");
+          btn.onclick = (e) => { e.stopPropagation(); saveQuickAffixes(inQuick
+            ? (S.meta.quick_affixes || []).filter((id) => id !== it.id)
+            : [...(S.meta.quick_affixes || []), it.id]); };
+          return btn;
+        },
+      }));
   };
   const filterBar = affixFilterBar(f, listed.filter((a) => !sel.has(a.id)), drawPicker, listed);
   drawPicker();

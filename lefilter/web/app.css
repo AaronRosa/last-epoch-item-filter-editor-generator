@@ -148,7 +148,14 @@ main { flex: 1; min-height: 0; }
 .picker .opt { padding: 2px 8px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
 .picker .opt:hover { background: var(--panel-2); }
 .picker .opt .meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
-.picker .grp { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-size: 11px; padding: 2px 8px; text-transform: uppercase; }
+.picker .grp { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-size: 11px; padding: 2px 8px; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; }
+.picker .grp button { font-size: 11px; padding: 0 6px; text-transform: none; }
+.picker .opt > span:first-of-type { flex: 1; }
+.picker .opt .quick-star { background: none; border: 1px solid transparent; border-radius: 4px; padding: 4px 8px; width: 36px; height: 30px; cursor: pointer; color: var(--muted); font-size: 18px; opacity: 0.45; flex: none; line-height: 1; transition: opacity .1s; }
+.picker .opt:hover .quick-star { opacity: 0.75; }
+.picker .opt .quick-star:hover { background: var(--panel-2); border-color: var(--line); opacity: 1; }
+.picker .opt .quick-star.on { color: var(--gold); opacity: 1; border-color: transparent; }
+.picker .opt .quick-star.on:hover { background: var(--panel-2); border-color: var(--line); }
 .selected-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .selected-list .chip-group { flex-basis: 100%; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em;
   margin-top: 6px; padding-bottom: 1px; border-bottom: 1px solid #221d25; }
@@ -264,6 +271,7 @@ a { color: var(--gold); }
 
 /* affix values: summary column + per-tier popup */
 .picker .opt.with-value { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 42%); gap: 10px; align-items: baseline; }
+.picker .opt.with-value:has(> .quick-star) { grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 42%); align-items: center; }
 .aval { color: #b9d7a6; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
 .pool-cols label .aval { margin-left: auto; padding-left: 8px; max-width: 55%; }
 .tip { position: fixed; z-index: 50; display: none; pointer-events: none; background: #120f14; border: 1px solid var(--gold-dim);
